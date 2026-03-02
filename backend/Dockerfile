@@ -20,5 +20,8 @@ RUN composer install --no-dev --optimize-autoloader
 # Izinkan penulisan pada folder storage
 RUN chmod -R 777 storage bootstrap/cache
 
-# Eksekusi migrasi otomatis & jalankan peladen (menggunakan port dinamis dari Render)
-CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}
+# DEKLARASI PORT UNTUK BACK4APP
+EXPOSE 8000
+
+# Eksekusi migrasi otomatis & jalankan peladen
+CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=8000
