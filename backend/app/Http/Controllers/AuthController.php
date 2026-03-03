@@ -9,10 +9,15 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Controller untuk menangani siklus hidup otentikasi.
+ * Mengelola pendaftaran, masuk, dan pengambilan data profil pengguna.
+ */
 class AuthController extends Controller
 {
     /**
-     * Menangani pendaftaran pengguna baru.
+     * Mendaftarkan pengguna baru dan membuat dompet otomatis untuk Mitra.
+     * Menggunakan Database Transaction untuk menjamin integritas data.
      */
     public function register(Request $request)
     {
@@ -20,55 +25,49 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
-            'role' => 'sometimes|string|in:user,partner'
+            'role' => 'required|string|in:customer,partner'
         ]);
 
         try {
             $user = DB::transaction(function () use ($request) {
-                $role = $request->role ?? 'user';
-
-                // Pembuatan profil otentikasi
-                $newUser = User::create([
+                $user = User::create([
                     'name' => $request->name,
                     'email' => $request->email,
                     'password' => Hash::make($request->password),
-                    'role' => $role,
+                    'role' => $request->role,
                 ]);
 
-                // Pembuatan entitas dompet khusus agen
-                if ($role === 'partner') {
+                // Inisialisasi dompet jika pengguna mendaftar sebagai mitra
+                if ($request->role === 'partner') {
                     Wallet::create([
-                        'user_id' => $newUser->id,
+                        'user_id' => $user->id,
                         'balance' => 0.00
                     ]);
                 }
 
-                return $newUser;
+                return $user;
             });
 
-            // Pembangkitan token sesi Sanctum
             $token = $user->createToken('auth_token')->plainTextToken;
 
             return response()->json([
                 'success' => true,
-                'message' => 'Registrasi berhasil',
                 'data' => $user,
                 'access_token' => $token,
                 'token_type' => 'Bearer',
             ], 201);
 
         } catch (\Exception $e) {
-            // Pencatatan galat absolut ke storage/logs/laravel.log
             Log::error('Registration Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat akun. Silakan periksa log sistem peladen.'
+                'message' => 'Gagal membuat akun. Terjadi kesalahan pada peladen.'
             ], 500);
         }
     }
 
     /**
-     * Menangani proses otentikasi masuk.
+     * Memvalidasi kredensial dan mengembalikan token akses.
      */
     public function login(Request $request)
     {
@@ -82,7 +81,7 @@ class AuthController extends Controller
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Kredensial yang Anda masukkan tidak valid.'
+                'message' => 'Kredensial tidak valid.'
             ], 401);
         }
 
@@ -90,34 +89,22 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Login berhasil',
             'data' => $user,
             'access_token' => $token,
-            'token_type' => 'Bearer',
         ], 200);
     }
 
     /**
-     * Menangani proses keluar sistem dan pemusnahan token.
-     */
-    public function logout(Request $request)
-    {
-        $request->user()->currentAccessToken()->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Berhasil keluar sistem'
-        ], 200);
-    }
-
-    /**
-     * Mengembalikan profil pengguna yang sedang aktif.
+     * Mengambil data pengguna aktif beserta informasi dompet.
      */
     public function user(Request $request)
     {
+        // Memuat relasi wallet secara eager loading
+        $user = $request->user()->load('wallet');
+
         return response()->json([
             'success' => true,
-            'data' => $request->user()
+            'data' => $user
         ], 200);
     }
 }
