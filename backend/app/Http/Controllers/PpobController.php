@@ -4,198 +4,148 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Transaction;
-use Midtrans\Config;
-use Midtrans\Snap;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class PpobController extends Controller
 {
+    /**
+     * Inisialisasi konfigurasi global Midtrans pada setiap instansiasi pengontrol.
+     */
+    public function __construct()
+    {
+        \Midtrans\Config::$serverKey = env('MIDTRANS_SERVER_KEY');
+        \Midtrans\Config::$isProduction = env('MIDTRANS_IS_PRODUCTION', false);
+        \Midtrans\Config::$isSanitized = env('MIDTRANS_IS_SANITIZED', true);
+        \Midtrans\Config::$is3ds = env('MIDTRANS_IS_3DS', true);
+    }
+
+    /**
+     * 1. INQUIRY: Memeriksa tagihan berdasarkan nomor pelanggan.
+     */
     public function inquiry(Request $request)
     {
-        // 1. Validasi Input Kritis
         $request->validate([
-            'customer_number' => 'required|string|size:12|regex:/^[0-9]+$/',
-        ], [
-            'customer_number.size' => 'ID Pelanggan PLN wajib terdiri dari 12 digit.',
-            'customer_number.regex' => 'ID Pelanggan PLN hanya dapat memuat angka.'
+            'customer_number' => 'required|numeric|digits:12',
         ]);
 
-        $customerNumber = $request->customer_number;
+        // Simulasi respons server PPOB. Dalam skenario produksi,
+        // bagian ini melakukan panggilan HTTP ke API pihak ketiga (misal: Digiflazz/Alterra).
+        $billingAmount = rand(100000, 500000);
+        $adminFee = 2500;
 
-        // 2. Simulasi Kegagalan (Skenario Negatif)
-        // Gunakan nomor 000000000000 untuk menguji tampilan error di Next.js nanti
-        if ($customerNumber === '000000000000') {
-            return response()->json([
-                'success' => false,
-                'message' => 'ID Pelanggan tidak ditemukan atau tagihan bulan ini sudah lunas.'
-            ], 404);
-        }
-
-        // 3. Logika Data Simulasi
-        $lastDigit = (int) substr($customerNumber, -1);
-        $names = ['Budi Santoso', 'Siti Aminah', 'Andi Wijaya', 'Dewi Lestari', 'Agus Pratama', 'Ayu Ningsih', 'Rizky Maulana', 'Putri Sari', 'Hendra Gunawan', 'Nina Marlina'];
-        $powers = ['900 VA', '1300 VA', '2200 VA', '3500 VA'];
-
-        $customerName = $names[$lastDigit];
-        $power = $powers[$lastDigit % 4];
-
-        // Tagihan diacak antara Rp 50.000 - Rp 500.000 dengan kelipatan 1.000
-        $billingAmount = rand(50, 500) * 1000;
-        $adminFee = 2500; // Keuntungan platform konstan
-        $totalAmount = $billingAmount + $adminFee;
-
-        // 4. Pengembalian Data Format JSON
         return response()->json([
             'success' => true,
-            'message' => 'Inquiry tagihan berhasil.',
             'data' => [
-                'customer_number' => $customerNumber,
-                'customer_name' => $customerName,
-                'power' => $power,
+                'customer_number' => $request->customer_number,
+                'customer_name' => 'Andi Wijaya', // Data Fiktif
+                'power' => '2200 VA',
                 'billing_amount' => $billingAmount,
                 'admin_fee' => $adminFee,
-                'total_amount' => $totalAmount,
-                'inquiry_ref' => 'INQ-' . time() . rand(100, 999)
+                'total_amount' => $billingAmount + $adminFee,
             ]
         ], 200);
     }
 
-    public function createPayment(Request $request)
+    /**
+     * 2. PAYMENT: Mencatat transaksi dan menghasilkan Snap Token Midtrans.
+     */
+    public function payment(Request $request)
     {
         $request->validate([
-            'customer_number' => 'required|string|size:12|regex:/^[0-9]+$/',
-            'amount' => 'required|numeric|min:10000'
+            'customer_number' => 'required|numeric|digits:12',
+            'amount' => 'required|numeric|min:10000',
         ]);
 
-        $user = $request->user();
-        $customerNumber = $request->customer_number;
+        $orderId = 'TRX-' . time() . '-' . Str::random(5);
 
-        // Pada sistem nyata, Anda wajib memanggil API Inquiry PLN sekali lagi di sini
-        // untuk memastikan tagihan belum dibayar oleh orang lain dalam jeda waktu tersebut.
-        // Untuk simulasi ini, kita gunakan nominal yang dikirim klien namun kita asumsikan valid.
-        $totalAmount = $request->amount;
-        $adminFee = 2500;
-        $billingAmount = $totalAmount - $adminFee;
-
-        // 1. Rekam transaksi ke database lokal dengan status pending
+        // Pencatatan awal transaksi dengan status pending
         $transaction = Transaction::create([
-            'user_id' => $user->id,
-            'customer_number' => $customerNumber,
-            'billing_amount' => $billingAmount,
-            'admin_fee' => $adminFee,
-            'total_amount' => $totalAmount,
+            'user_id' => $request->user()->id,
+            'order_id' => $orderId,
+            'customer_number' => $request->customer_number,
+            'total_amount' => $request->amount,
             'payment_status' => 'pending',
             'ppob_status' => 'pending',
         ]);
 
-        // 2. Konfigurasi Kredensial Midtrans
-        Config::$serverKey = env('MIDTRANS_SERVER_KEY');
-        Config::$isProduction = env('MIDTRANS_IS_PRODUCTION', false);
-        Config::$isSanitized = env('MIDTRANS_IS_SANITIZED', true);
-        Config::$is3ds = env('MIDTRANS_IS_3DS', true);
-
-        // 3. Susun Parameter Permintaan Snap
         $params = [
             'transaction_details' => [
-                'order_id' => $transaction->id, // Menggunakan UUID transaksi
-                'gross_amount' => $totalAmount,
+                'order_id' => $orderId,
+                'gross_amount' => $request->amount,
             ],
             'customer_details' => [
-                'first_name' => $user->name,
-                'email' => $user->email,
+                'first_name' => $request->user()->name,
+                'email' => $request->user()->email,
             ],
-            'item_details' => [
-                [
-                    'id' => 'PLN-POSTPAID',
-                    'price' => $billingAmount,
-                    'quantity' => 1,
-                    'name' => 'Tagihan Listrik ' . $customerNumber
-                ],
-                [
-                    'id' => 'ADMIN-FEE',
-                    'price' => $adminFee,
-                    'quantity' => 1,
-                    'name' => 'Biaya Admin'
-                ]
-            ]
         ];
 
-        // 4. Minta Token Pembayaran ke Midtrans
         try {
-            $snapToken = Snap::getSnapToken($params);
+            $snapToken = \Midtrans\Snap::getSnapToken($params);
 
-            // Simpan token ke database untuk referensi
+            // Pembaruan token pada basis data untuk keperluan audit
             $transaction->update(['midtrans_snap_token' => $snapToken]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Transaksi berhasil dibuat.',
                 'data' => [
-                    'transaction_id' => $transaction->id,
-                    'snap_token' => $snapToken
+                    'snap_token' => $snapToken,
+                    'order_id' => $orderId,
                 ]
-            ], 201);
-
+            ], 200);
         } catch (\Exception $e) {
-            // Tangani kegagalan koneksi ke Midtrans
-            $transaction->update(['payment_status' => 'failed']);
-
+            Log::error('Midtrans Snap Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghubungkan ke server pembayaran.',
-                'error' => $e->getMessage()
+                'message' => 'Gagal berinteraksi dengan gerbang pembayaran.'
             ], 500);
         }
     }
 
-    // Endpoint untuk menerima callback dari Midtrans
-    public function paymentCallback(Request $request)
+    /**
+     * 3. CALLBACK: Menangani webhook asinkron dari server Midtrans.
+     */
+    public function callback(Request $request)
     {
-        $payload = $request->all();
-
-        // 1. Ekstraksi data dari Midtrans
-        $orderId = $payload['order_id'] ?? null;
-        $statusCode = $payload['status_code'] ?? null;
-        $grossAmount = $payload['gross_amount'] ?? null;
-        $signatureKey = $payload['signature_key'] ?? null;
         $serverKey = env('MIDTRANS_SERVER_KEY');
 
-        // 2. Validasi Keamanan (Signature Key)
-        $expectedSignature = hash('sha512', $orderId . $statusCode . $grossAmount . $serverKey);
+        // Validasi keaslian permintaan menggunakan algoritma SHA512
+        $hashed = hash("sha512", $request->order_id . $request->status_code . $request->gross_amount . $serverKey);
 
-        if ($expectedSignature !== $signatureKey) {
-            return response()->json(['success' => false, 'message' => 'Invalid signature'], 403);
+        if ($hashed !== $request->signature_key) {
+            Log::warning('Midtrans Webhook: Invalid Signature detected.');
+            return response()->json(['message' => 'Invalid signature'], 403);
         }
 
-        // 3. Pencarian Transaksi di Database
-        $transaction = Transaction::find($orderId);
+        $transaction = Transaction::where('order_id', $request->order_id)->first();
 
         if (!$transaction) {
-            return response()->json(['success' => false, 'message' => 'Transaction not found'], 404);
+            Log::warning('Midtrans Webhook: Transaction ' . $request->order_id . ' not found.');
+            return response()->json(['message' => 'Transaction not found'], 404);
         }
 
-        // 4. Pembaruan Status Transaksi
-        $transactionStatus = $payload['transaction_status'];
+        $transactionStatus = $request->transaction_status;
 
+        // Evaluasi status transaksi dan pembaruan basis data
         if ($transactionStatus == 'capture' || $transactionStatus == 'settlement') {
-            $transaction->payment_status = 'paid';
-            $transaction->ppob_status = 'success';
-            // Simulasi penerbitan nomor referensi struk PLN
-            $transaction->pln_receipt_ref = 'PLN-' . strtoupper(Str::random(12));
-        } elseif ($transactionStatus == 'expire') {
-            $transaction->payment_status = 'expired';
-            $transaction->ppob_status = 'failed';
-        } elseif ($transactionStatus == 'cancel' || $transactionStatus == 'deny') {
-            $transaction->payment_status = 'failed';
-            $transaction->ppob_status = 'failed';
+            $transaction->update([
+                'payment_status' => 'paid',
+                'ppob_status' => 'success',
+                'pln_receipt_ref' => 'PLN-' . strtoupper(Str::random(10)) // Simulasi nomor referensi token listrik
+            ]);
+        } elseif ($transactionStatus == 'deny' || $transactionStatus == 'cancel' || $transactionStatus == 'expire') {
+            $transaction->update([
+                'payment_status' => 'failed',
+                'ppob_status' => 'failed'
+            ]);
         }
 
-        $transaction->save();
-
-        return response()->json(['success' => true, 'message' => 'Callback processed']);
+        return response()->json(['message' => 'Callback processed successfully'], 200);
     }
 
-    // Endpoint untuk mengambil riwayat transaksi pengguna
+    /**
+     * 4. HISTORY: Mengambil daftar transaksi khusus untuk pengguna yang sedang masuk.
+     */
     public function getTransactionHistory(Request $request)
     {
         $transactions = Transaction::where('user_id', $request->user()->id)
