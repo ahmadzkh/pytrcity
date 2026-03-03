@@ -13,6 +13,8 @@ Route::post('/midtrans/callback', [PpobController::class, 'paymentCallback']);
 
 Route::middleware(['auth:sanctum', IsAdmin::class])->group(function () {
     Route::get('/admin/dashboard', [AdminController::class, 'getDashboardStats']);
+    Route::get('/admin/transactions', [AdminController::class, 'getAllTransactions']);
+    Route::get('/admin/users', [AdminController::class, 'getUsers']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {

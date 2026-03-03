@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 
 class AdminController extends Controller
 {
+    // Admin dashboard stats
     public function getDashboardStats(Request $request)
     {
         $totalRevenue = Transaction::where('payment_status', 'paid')->sum('total_amount');
@@ -39,6 +40,55 @@ class AdminController extends Controller
                 ],
                 'recent_transactions' => $recentTransactions
             ]
+        ], 200);
+    }
+
+    // Admin dashboard transactions
+    public function getAllTransactions(Request $request)
+    {
+        $query = Transaction::with('user:id,name')->orderBy('created_at', 'desc');
+
+        // Terapkan filter status jika parameter dikirim oleh klien
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('payment_status', $request->status);
+        }
+
+        // Batasi 10 data per halaman
+        $transactions = $query->paginate(10);
+
+        return response()->json([
+            'success' => true,
+            'data' => $transactions
+        ], 200);
+    }
+
+    // Admin dashboard users
+    public function getUsers(Request $request)
+    {
+        $query = User::query();
+
+        // Terapkan filter peran jika parameter spesifik dikirim
+        if ($request->has('role') && $request->role !== 'all') {
+            $query->where('role', $request->role);
+        }
+
+        // Terapkan pencarian parsial pada nama atau email
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = strtolower($request->search);
+            $query->where(function ($q) use ($searchTerm) {
+                $q->whereRaw('LOWER(name) LIKE ?', ["%{$searchTerm}%"])
+                  ->orWhereRaw('LOWER(email) LIKE ?', ["%{$searchTerm}%"]);
+            });
+        }
+
+        $query->orderBy('created_at', 'desc');
+
+        // Batasi 10 data per halaman
+        $users = $query->paginate(10);
+
+        return response()->json([
+            'success' => true,
+            'data' => $users
         ], 200);
     }
 }
