@@ -148,6 +148,7 @@ class PpobController extends Controller
         }
     }
 
+    // Endpoint untuk menerima callback dari Midtrans
     public function paymentCallback(Request $request)
     {
         $payload = $request->all();
@@ -192,5 +193,19 @@ class PpobController extends Controller
         $transaction->save();
 
         return response()->json(['success' => true, 'message' => 'Callback processed']);
+    }
+
+    // Endpoint untuk mengambil riwayat transaksi pengguna
+    public function getTransactionHistory(Request $request)
+    {
+        $transactions = Transaction::where('user_id', $request->user()->id)
+                            ->orderBy('created_at', 'desc')
+                            ->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Berhasil mengambil riwayat transaksi',
+            'data' => $transactions
+        ], 200);
     }
 }

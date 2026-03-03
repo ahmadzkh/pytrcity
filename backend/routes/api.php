@@ -18,4 +18,5 @@ Route::middleware('auth:sanctum')->group(function () {
     // Titik Akhir PPOB Terproteksi
     Route::post('/ppob/inquiry', [PpobController::class, 'inquiry']);
     Route::post('/ppob/payment', [PpobController::class, 'createPayment']);
+    Route::get('/ppob/history', [PpobController::class, 'getTransactionHistory']);
 });
