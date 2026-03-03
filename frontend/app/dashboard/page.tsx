@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import api from "../../lib/api";
 import Script from "next/script";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -120,19 +121,32 @@ export default function DashboardPage() {
       />
 
       <div className="max-w-3xl mx-auto">
-        <header className="flex justify-between items-center bg-white shadow-md rounded-lg p-6 mb-8">
+        <header className="flex justify-between items-center bg-white shadow-md rounded-lg p-6 mb-8 border border-gray-100">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">
+            <h1 className="text-2xl font-bold text-gray-900">
               Dasbor Pytricity
             </h1>
-            <p className="text-gray-600">Selamat datang, {user.name}</p>
+            <p className="text-gray-600">
+              Selamat datang,{" "}
+              <span className="font-semibold text-emerald-600">
+                {user.name}
+              </span>
+            </p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition-colors"
-          >
-            Keluar
-          </button>
+          <div className="flex gap-3">
+            <Link
+              href="/transactions"
+              className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-md transition-colors text-sm flex items-center"
+            >
+              Riwayat Transaksi
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="bg-red-50 hover:bg-red-100 text-red-600 font-medium py-2 px-4 rounded-md transition-colors text-sm"
+            >
+              Keluar
+            </button>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
