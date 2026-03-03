@@ -1,27 +1,27 @@
-# Menggunakan image PHP CLI super ringan
+# Menggunakan image PHP CLI yang ringan
 FROM php:8.2-cli
 
-# Instal dependensi sistem dan ekstensi PostgreSQL
+# Menginstal dependensi sistem dan ekstensi PostgreSQL
 RUN apt-get update && apt-get install -y libpq-dev unzip \
     && docker-php-ext-install pdo pdo_pgsql
 
-# Ambil Composer dari image resmi
+# Mengambil Composer dari image resmi
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Atur direktori kerja di dalam kontainer
+# Mengatur direktori kerja di dalam kontainer
 WORKDIR /app
 
-# Salin seluruh kode backend lokal ke dalam kontainer
+# Menyalin seluruh kode backend lokal ke dalam kontainer
 COPY . .
 
-# Instal dependensi kerangka kerja Laravel
+# Menginstal dependensi kerangka kerja Laravel
 RUN composer install --no-dev --optimize-autoloader
 
-# Izinkan penulisan pada folder storage
+# Memberikan izin penulisan pada folder penyimpan
 RUN chmod -R 777 storage bootstrap/cache
 
-# DEKLARASI PORT UNTUK BACK4APP
+# Mendeklarasikan port untuk perutean Back4App
 EXPOSE 8000
 
-# Eksekusi migrasi di latar belakang (&) agar server web langsung menyala merespons health-check
-CMD php artisan migrate --force & php artisan serve --host=0.0.0.0 --port=8000
+# Menyalakan peladen API secara eksklusif (tanpa proses migrasi)
+CMD php artisan serve --host=0.0.0.0 --port=8000
